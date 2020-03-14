@@ -1,0 +1,270 @@
+<!doctype html>
+<html>
+
+<head>
+    <script src="http://static.popodv.com/dvlibs/alipay/g2.v3.2.8.min.js"></script>
+    <script src="http://static.popodv.com/dvlibs/alipay/data-set.v0.9.6.min.js"></script>
+    <script src="http://static.popodv.com/dvlibs/tool/jquery.min.js"></script>   
+	<script type="text/javascript" src='http://webapi.amap.com/maps?v=1.4.12&key=您申请的key值'></script>
+	<script type="text/javascript" src="https://webapi.amap.com/maps?v=1.4.12&key=264b16eb8ed48b872fd7939ec41ac2f6&plugin=AMap.Walking"></script>
+	<script src="http://webapi.amap.com/ui/1.0/main.js?v=1.0.11"></script>
+	<script src="https://a.amap.com/jsapi_demos/static/demo-center/js/demoutils.js"></script>
+	<script type="text/javascript" src="https://cache.amap.com/lbs/static/addToolbar.js"></script>
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+    <title>mobike_heat</title>
+    <link rel="stylesheet" href="https://a.amap.com/jsapi_demos/static/demo-center/css/demo-center.css" />
+    <style type="text/css">
+        html,
+        body,
+        #container {
+            width: 100%;
+            height: 100%;
+        }
+        #panel {
+            position: fixed;
+            background-color: white;
+            max-height: 90%;
+            overflow-y: auto;
+            top: 10px;
+            right: 10px;
+            width: 280px;
+        }
+        #panel .amap-call {
+            background-color: #009cf9;
+            border-top-left-radius: 4px;
+   	        border-top-right-radius: 4px;
+        }
+        #panel .amap-lib-walking {
+	        border-bottom-left-radius: 4px;
+   	        border-bottom-right-radius: 4px;
+            overflow: hidden;
+        }
+		.input-item{
+			position:relative;
+		}
+		.input-card{
+			opacity: 0.8;
+		}
+    </style>
+	
+</head>
+
+<body>
+	<div id="container"></div>
+	<div class="info">
+		<h4 id='status'></h4><hr>
+		<p id='result'></p><hr>
+		<p >由于众多浏览器已不再支持非安全域的定位请求，为保位成功率和精度，请升级您的站点到HTTPS。</p>
+	</div>
+	<div id="panel"></div>
+	<div class="input-card">
+		<div class="input-item">
+			<input type="button" class="btn" onclick="locate()" value="定位"/>
+		</div>
+		<div class="input-item">
+			<input type="button" class="btn" onclick="pointSimplifierIns.show()" value="显示坐标点"/>
+			<input type="button" class="btn" onclick="pointSimplifierIns.hide()" value="隐藏坐标点"/>
+		</div>
+		<div class="input-item">
+			<input type="button" class="btn" onclick="heatmap.show()" value="热力图"/>
+			<input type="button" class="btn" onclick="heatmap.hide()" value="隐藏热力图"/>
+		</div>
+	</div>
+    <script type="text/javascript">
+    const ds=new DataSet({
+		state:{
+			currentState:''
+		}
+	});
+	var map=new AMap.Map('container',{
+		resizeEnable:true
+	});
+	var heatmap;
+	var pointSimplifierIns;
+	var mylocation;
+	var distlocation;
+	/**/
+	
+		$.get('https://raw.githubusercontent.com/collyzxy/g2-src/master/G2.csv',data=>{
+			
+			//heatmap
+			var heatmapData=[];
+				const dvForHeat=ds
+					.createView('mobike_heat',{
+						watchingState:[]
+					})
+					.source(data,{
+						type:'csv',
+					});
+				dvForHeat.transform({
+					type:'map',
+					callback:function callback(row){
+						heatmapData.push({
+							lng:row.distX,
+							lat:row.distY
+						})
+						return row;
+					}
+				});
+			
+				//创建地图
+				map.plugin(["AMap.Heatmap"], function () {
+				//初始化heatmap对象
+					heatmap = new AMap.Heatmap(map, {
+						radius: 25, //给定半径
+						opacity: [0, 0.8],
+						gradient:{
+							0.5: '#3b3eac',
+							0.65: '#3366cc',
+							0.7: '#0099c6',
+							0.9: '#990099',
+							1.0: '#dc3912'
+						}
+					});
+					heatmap.setDataSet({
+						data: heatmapData,
+					});
+				});
+		
+			//points
+			var usrdata=[];
+			const dvForPoint=ds
+				.createView('mobike',{
+					watchingState:[]
+				})
+				.source(data,{
+					type:'csv',
+				});
+			dvForPoint.transform({
+				type:'map',
+				callback(row){
+					usrdata.push({
+						position:[
+							row.distX,
+							row.distY
+						]
+					})
+					return row;
+				}
+			});
+			AMapUI.loadUI(['misc/PointSimplifier'], function(PointSimplifier) {
+				if (!PointSimplifier.supportCanvas) {
+					alert('当前环境不支持 Canvas！');
+					return;
+				}
+			
+			//启动页面
+				pointSimplifierIns = new PointSimplifier({
+					map: map, //关联的map
+					compareDataItem: function(a, b, aIndex, bIndex) {
+						//数据源中靠后的元素优先，index大的排到前面去
+						return aIndex > bIndex ? -1 : 1;
+					},
+					getPosition: function(dataItem) {
+						//返回数据项的经纬度，AMap.LngLat实例或者经纬度数组
+						return dataItem.position;
+					},
+					getHoverTitle: function(dataItem, idx) {
+						//返回数据项的Title信息，鼠标hover时显示
+						return '坐标: ' + dataItem.position[0]+','+dataItem.position[1];
+					},
+					renderOptions: {
+						//点的样式
+						pointStyle: {
+							//绘制点占据的矩形区域
+							content: PointSimplifier.Render.Canvas.getImageContent(
+								'https://raw.githubusercontent.com/collyzxy/g2-src/master/bike.bmp',
+								function onload() {
+									pointSimplifierIns.renderLater();
+								},
+								function onerror(e) {
+									alert('图片加载失败！');
+								}),
+							//宽度
+							width: 31,
+							//高度
+							height: 31,
+							//定位点为底部中心
+							offset: ['-50%', '-100%'],
+							fillStyle: null,
+							strokeStyle: null
+						}
+					}
+				});
+			
+				//设置数据源，data需要是一个数组
+				pointSimplifierIns.setData(usrdata);
+			
+				//监听事件
+				pointSimplifierIns.on('pointClick', function(e, record) {
+					var redata=record.data;
+					var redata2=redata.position;
+					distlocation=new AMap.LngLat(redata2[0],redata2[1]);
+					route();
+					//console.log(e.type, record);
+				});
+			});	
+		});
+	//解析定位结果
+	function onComplete(data) {
+	    document.getElementById('status').innerHTML='定位成功'
+	    var str = [];
+	    str.push('定位结果：' + data.position);
+	    str.push('定位类别：' + data.location_type);
+	    if(data.accuracy){
+	         str.push('精度：' + data.accuracy + ' 米');
+	    }//如为IP精确定位结果则没有精度信息
+	    str.push('是否经过偏移：' + (data.isConverted ? '是' : '否'));
+	    document.getElementById('result').innerHTML = str.join('<br>');
+		return data.position;
+	}
+	//解析定位错误信息
+	function onError(data) {
+	    document.getElementById('status').innerHTML='定位失败'
+	    document.getElementById('result').innerHTML = '失败原因排查信息:'+data.message;
+	}
+	//定位
+	
+	function locate(){
+		AMap.plugin('AMap.Geolocation', function() {
+			var geolocation = new AMap.Geolocation({
+				enableHighAccuracy: true,//是否使用高精度定位，默认:true
+				timeout: 10000,          //超过10秒后停止定位，默认：5s
+				buttonPosition:'RB',    //定位按钮的停靠位置
+				buttonOffset: new AMap.Pixel(10, 20),//定位按钮与设置的停靠位置的偏移量，默认：Pixel(10, 20)
+				zoomToAccuracy: true,   //定位成功后是否自动调整地图视野到定位点
+				showButton:true,
+			});
+			map.addControl(geolocation);
+			geolocation.getCurrentPosition(function(status,result){
+				if(status=='complete'){
+					mylocation=onComplete(result)
+				}else{
+					onError(result)
+				}
+			});
+		});
+	}
+	function route(){
+		var MWalk;
+		MWalk = new AMap.Walking({
+			map:map,
+			panel:"panel"
+		}); //构造路线导航类
+		MWalk.search(mylocation, distlocation, function(status, result) {
+		// result即是对应的步行路线数据信息，相关数据结构文档请参考  https://lbs.amap.com/api/javascript-api/reference/route-search#m_WalkingResult
+			if (status === 'complete') {
+				log.success('绘制步行路线完成')
+			} else {
+				log.error('步行路线数据查询失败' + result)
+			} 
+		}); //根据起终点坐标规划步行路线
+	}
+	
+
+    </script>
+</body>
+
+</html>
